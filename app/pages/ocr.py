@@ -67,111 +67,119 @@ Failure to comply may result in legal action.
                     st.warning("⚠ No text detected in the uploaded image.")
                     st.stop()
 
-                st.success("✅ Text extraction completed!")
-                st.text_area("Extracted Text", extracted, height=300)
+                try:
+                    from engine.ocr_processor import extract_text_batch
+                    with st.spinner("🔍 Extracting text... Please wait"):
+                        # Use extract_text_batch for structured error handling
+                        uploaded_file.seek(0)
+                        results = extract_text_batch([uploaded_file])
+                        filename = getattr(uploaded_file, 'name', 'uploaded_file')
+                        result = results.get(filename, {})
+                        if result.get('status') == 'error':
+                            st.error(f"❌ OCR failed: {result.get('error', 'Unknown error')}")
+                            st.stop()
+                        extracted = result.get('text', '')
 
-                copy_to_clipboard(extracted, "Copy OCR Text")
-                
-                # ================= RISK ANALYSIS =================
-                risk_result = analyze_risk(extracted)
+                    if not extracted or not extracted.strip():
+                        st.warning("⚠ No text detected in the uploaded image.")
+                        st.stop()
 
-                st.markdown("### ⚠️ Legal Risk Assessment")
+                    st.success("✅ Text extraction completed!")
+                    st.text_area("Extracted Text", extracted, height=300)
+                    copy_to_clipboard(extracted, "Copy OCR Text")
 
-                severity = risk_result["severity"]
-                sections = risk_result["sections"]
-                guidance = risk_result["guidance"]
-                punishments = risk_result.get("punishment", [])
-
-                if punishments:
-                    st.markdown("### ⚖️ Possible Punishment")
-                    for p in punishments:
-                        st.info(p)
-
-                if severity == "High":
-                    st.error(f"🔴 Severity Level: {severity}")
-                elif severity == "Medium":
-                    st.warning(f"🟠 Severity Level: {severity}")
-                else:
-                    st.success(f"🟢 Severity Level: {severity}")
-
-                if sections:
-                    st.write("**Detected Sections:**", ", ".join(sections))
-                else:
-                    st.write("**Detected Sections:** None")
-                st.info(f"**Guidance:** {guidance}")
-
-                # ================= BAIL ANALYSIS =================
-                bail_results = analyze_bail(extracted)
-
-                if bail_results:
-                    st.markdown("### ⚖️ Bail Eligibility & Procedure")
-
-                    for item in bail_results:
-                        st.write(f"**Section {item['section']} — {item['description']}**")
-
-                        if item["bailable"] == "Non-bailable":
-                            st.error("🔴 Non-bailable")
+                    # ================= RISK ANALYSIS =================
+                    try:
+                        risk_result = analyze_risk(extracted)
+                        st.markdown("### ⚠️ Legal Risk Assessment")
+                        severity = risk_result["severity"]
+                        sections = risk_result["sections"]
+                        guidance = risk_result["guidance"]
+                        punishments = risk_result.get("punishment", [])
+                        if punishments:
+                            st.markdown("### ⚖️ Possible Punishment")
+                            for p in punishments:
+                                st.info(p)
+                        if severity == "High":
+                            st.error(f"🔴 Severity Level: {severity}")
+                        elif severity == "Medium":
+                            st.warning(f"🟠 Severity Level: {severity}")
                         else:
-                            st.success("🟢 Bailable")
-
-                        st.write(f"Cognizable: {item['cognizable']}")
-                        st.info(f"Procedure: {item['procedure']}")
-                        st.write(f"Punishment: {item['punishment']}")
-
-                        st.divider()
-                # ================= DEADLINE ANALYSIS =================
-                deadline_results = analyze_deadlines(extracted)
-
-                if deadline_results:
-                    st.markdown("### 📅 Important Dates & Deadlines")
-
-                    for item in deadline_results:
-
-                        if item["status"] == "Expired":
-                            st.error(f"❌ {item['date']} — Expired")
-                        elif item["status"] == "Urgent":
-                            st.warning(f"⚠ {item['date']} — Urgent")
-                        elif item["status"] == "Upcoming":
-                            st.info(f"📌 {item['date']} — Upcoming")
+                            st.success(f"🟢 Severity Level: {severity}")
+                        if sections:
+                            st.write("**Detected Sections:**", ", ".join(sections))
                         else:
-                            st.write(f"{item['date']} — Detected")
+                            st.write("**Detected Sections:** None")
+                        st.info(f"**Guidance:** {guidance}")
+                    except Exception as e:
+                        st.error(f"❌ Legal risk analysis failed: {str(e)}")
 
-                    st.divider()
+                    # ================= BAIL ANALYSIS =================
+                    try:
+                        bail_results = analyze_bail(extracted)
+                        if bail_results:
+                            st.markdown("### ⚖️ Bail Eligibility & Procedure")
+                            for item in bail_results:
+                                st.write(f"**Section {item['section']} — {item['description']}**")
+                                if item["bailable"] == "Non-bailable":
+                                    st.error("🔴 Non-bailable")
+                                else:
+                                    st.success("🟢 Bailable")
+                                st.write(f"Cognizable: {item['cognizable']}")
+                                st.info(f"Procedure: {item['procedure']}")
+                                st.write(f"Punishment: {item['punishment']}")
+                                st.divider()
+                    except Exception as e:
+                        st.error(f"❌ Bail analysis failed: {str(e)}")
 
-        # ================= PLAIN LANGUAGE SUMMARY =================
-                summary_data = generate_summary(extracted)
+                    # ================= DEADLINE ANALYSIS =================
+                    try:
+                        deadline_results = analyze_deadlines(extracted)
+                        if deadline_results:
+                            st.markdown("### 📅 Important Dates & Deadlines")
+                            for item in deadline_results:
+                                if item["status"] == "Expired":
+                                    st.error(f"❌ {item['date']} — Expired")
+                                elif item["status"] == "Urgent":
+                                    st.warning(f"⚠ {item['date']} — Urgent")
+                                elif item["status"] == "Upcoming":
+                                    st.info(f"📌 {item['date']} — Upcoming")
+                                else:
+                                    st.write(f"{item['date']} — Detected")
+                            st.divider()
+                    except Exception as e:
+                        st.error(f"❌ Deadline analysis failed: {str(e)}")
 
-                st.markdown("### 📝 Plain-Language Explanation")
+                    # ================= PLAIN LANGUAGE SUMMARY =================
+                    try:
+                        summary_data = generate_summary(extracted)
+                        st.markdown("### 📝 Plain-Language Explanation")
+                        if summary_data:
+                            if summary_data.get("sections"):
+                                st.write("**Sections Detected:**", ", ".join(summary_data["sections"]))
+                            if summary_data.get("authorities"):
+                                st.write("**Authorities Involved:**", ", ".join(summary_data["authorities"]))
+                            if summary_data.get("action_points"):
+                                st.write("**Recommended Actions:**")
+                                for point in summary_data["action_points"]:
+                                    st.write(f"- {point}")
+                            st.info(summary_data.get("plain_summary", ""))
+                    except Exception as e:
+                        st.error(f"❌ Summary generation failed: {str(e)}")
 
-                if summary_data:
-
-                    if summary_data.get("sections"):
-                        st.write("**Sections Detected:**", ", ".join(summary_data["sections"]))
-
-                    if summary_data.get("authorities"):
-                        st.write("**Authorities Involved:**", ", ".join(summary_data["authorities"]))
-
-                    if summary_data.get("action_points"):
-                        st.write("**Recommended Actions:**")
-                        for point in summary_data["action_points"]:
-                            st.write(f"- {point}")
-
-                    st.info(summary_data.get("plain_summary", ""))
-
-                with st.spinner("🤖 Generating action items..."):
-                    summary = llm_summarize(extracted, question="Action items?")
-
-                if summary:
-                    st.success("✅ Analysis completed!")
-                    st.info(f"**Action Item:** {summary}")
-
-                    with st.spinner("🎙️ Agent is preparing action items dictation..."):
-                        audio_path = tts_engine.generate_audio(summary, "temp_ocr.wav")
-                        if audio_path and os.path.exists(audio_path):
-                            render_agent_audio(audio_path, title="Action Items Dictation")
-
-                else:
-                    st.warning("⚠ AI Engine failed to generate summary.")
-
-            except Exception as e:
-                st.error(f"❌ Error during processing: {str(e)}")
+                    try:
+                        with st.spinner("🤖 Generating action items..."):
+                            summary = llm_summarize(extracted, question="Action items?")
+                        if summary:
+                            st.success("✅ Analysis completed!")
+                            st.info(f"**Action Item:** {summary}")
+                            with st.spinner("🎙️ Agent is preparing action items dictation..."):
+                                audio_path = tts_engine.generate_audio(summary, "temp_ocr.wav")
+                                if audio_path and os.path.exists(audio_path):
+                                    render_agent_audio(audio_path, title="Action Items Dictation")
+                        else:
+                            st.warning("⚠ AI Engine failed to generate summary.")
+                    except Exception as e:
+                        st.error(f"❌ AI summary/voice failed: {str(e)}")
+                except Exception as e:
+                    st.error(f"❌ Error during processing: {str(e)}")
